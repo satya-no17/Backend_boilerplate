@@ -1,0 +1,507 @@
+# Backend API Documentation
+
+## 📁 Project Structure
+
+```
+backend/
+├── server.js                    # Main entry point - initializes Express server
+├── package.json                 # Project dependencies
+├── .env                         # Environment variables (DB_URL, JWT_SECRET, PORT)
+├── readme.md                    # This file
+└── src/
+    ├── app.js                   # Express app setup with routes
+    ├── db/
+    │   └── db.js               # PostgreSQL connection pool & database initialization
+    ├── models/
+    │   └── usermodel.js         # User schema/model definitions
+    ├── controllers/
+    │   └── auth.controller.js   # Request handlers for auth routes
+    ├── services/
+    │   └── auth.services.js     # Business logic for registration & login
+    ├── queries/
+    │   └── auth.queries.js      # Database query functions
+    ├── routes/
+    │   └── auth.routes.js       # API route definitions
+    └── middleWares/
+        └── auth.middleware.js   # JWT authentication middleware
+```
+
+---
+
+## 📄 File Descriptions
+
+### `server.js`
+**Purpose**: Main server entry point
+- Initializes Express app
+- Loads environment variables
+- Connects to database
+- Sets up middleware (CORS, JSON parser)
+- Defines root route `GET /`
+- Starts listening on specified PORT
+
+### `src/app.js`
+**Purpose**: Express application configuration
+- Creates Express instance
+- Applies JSON body parser
+- Mounts auth routes under `/auth` prefix
+
+### `src/db/db.js`
+**Purpose**: Database connection & initialization
+- Creates PostgreSQL connection pool
+- `connectDB()` - Tests database connection on startup
+- Exports `pool` for running queries
+- Uses `DB_URL` from environment variables
+
+### `src/controllers/auth.controller.js`
+**Purpose**: HTTP request handlers
+- `registerUser()` - Handles POST `/auth/register` requests
+- `loginUser()` - Handles POST `/auth/login` requests
+- Extracts request data and calls service functions
+- Returns JSON responses with status codes
+
+### `src/services/auth.services.js`
+**Purpose**: Business logic for authentication
+- `register()` - Creates new users with hashed passwords
+- `login()` - Authenticates user and returns JWT token
+- Uses bcrypt for password hashing/comparison
+- Uses jsonwebtoken for token creation
+
+### `src/queries/auth.queries.js`
+**Purpose**: Database operations
+- `findUserByMail()` - Queries user by email
+- `insertUser()` - Inserts new user into database
+- Uses parameterized queries to prevent SQL injection
+
+### `src/routes/auth.routes.js`
+**Purpose**: API route definitions
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login user
+
+### `src/middleWares/auth.middleware.js`
+**Purpose**: JWT authentication middleware
+- `protect()` - Verifies JWT tokens in Authorization header
+- Extracts bearer token from request
+- Decodes and validates token
+- Attaches user data to `req.user`
+
+### `src/models/usermodel.js`
+**Purpose**: User data schema definitions (not used yet, for future reference)
+
+---
+
+## 🚀 Setup & Installation
+
+### Prerequisites
+- Node.js (v24.12.0+)
+- PostgreSQL database
+- npm
+
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Create `.env` File
+Create a `.env` file in the root directory:
+```
+PORT=5000
+DB_URL=postgresql://username:password@localhost:5432/dbname
+JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random
+```
+
+### 3. Setup Database
+Create PostgreSQL table:
+```sql
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 4. Start Server
+```bash
+# Development mode with auto-reload
+npm run dev
+
+# Production mode
+node server.js
+```
+
+Server will start on `http://localhost:5000`
+
+---
+
+## 📡 API Endpoints
+
+### Base URL
+```
+http://localhost:5000
+```
+
+### Health Check
+```
+GET /
+```
+**Response:**
+```json
+{
+  "message": "app is running in 5000"
+}
+```
+
+### Register User
+```
+POST /auth/register
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "securepassword123"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "message": "user registered",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}
+```
+
+**Error Response (400):**
+```json
+{
+  "message": "email already exist"
+}
+```
+
+### Login User
+```
+POST /auth/login
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "password": "securepassword123"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "message": "login success",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Error Response (400):**
+```json
+{
+  "message": "user not exist"
+}
+```
+or
+```json
+{
+  "message": "invalid email,password"
+}
+```
+
+---
+
+## 🔐 Protected Routes (Using Auth Middleware)
+
+To protect a route with JWT authentication:
+
+1. **Import middleware in your routes file:**
+```javascript
+import { protect } from '../middleWares/auth.middleware.js'
+```
+
+2. **Add middleware to route:**
+```javascript
+router.get('/profile', protect, getUserProfile)
+```
+
+3. **Access user data in controller:**
+```javascript
+export async function getUserProfile(req, res) {
+  const userId = req.user.id  // From token
+  const userEmail = req.user.email
+  // ... fetch user data
+}
+```
+
+---
+
+## 🔌 Frontend Integration
+
+### 1. Install Axios (or fetch)
+```bash
+npm install axios
+```
+
+### 2. Create API Service File (`src/services/authService.js`)
+```javascript
+import axios from 'axios'
+
+const API_URL = 'http://localhost:5000'
+
+export const authService = {
+  register: async (name, email, password) => {
+    const response = await axios.post(`${API_URL}/auth/register`, {
+      name,
+      email,
+      password
+    })
+    return response.data
+  },
+
+  login: async (email, password) => {
+    const response = await axios.post(`${API_URL}/auth/login`, {
+      email,
+      password
+    })
+    // Save token to localStorage
+    if (response.data.token) {
+      localStorage.setItem('authToken', response.data.token)
+    }
+    return response.data
+  },
+
+  logout: () => {
+    localStorage.removeItem('authToken')
+  }
+}
+```
+
+### 3. Use in Frontend Component (React Example)
+```javascript
+import { authService } from './services/authService'
+import { useState } from 'react'
+
+function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const data = await authService.login(email, password)
+      console.log('Login success:', data)
+      // Redirect to dashboard or home
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleLogin}>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email"
+      />
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Password"
+      />
+      <button type="submit" disabled={loading}>
+        {loading ? 'Logging in...' : 'Login'}
+      </button>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+    </form>
+  )
+}
+
+export default LoginPage
+```
+
+### 4. Send Authenticated Requests
+```javascript
+// Create axios instance with token
+import axios from 'axios'
+
+const apiClient = axios.create({
+  baseURL: 'http://localhost:5000'
+})
+
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+export default apiClient
+```
+
+### 5. Use Protected Routes
+```javascript
+import apiClient from './axios-config'
+
+// In your component
+const fetchUserProfile = async () => {
+  try {
+    const response = await apiClient.get('/api/profile')
+    console.log(response.data)
+  } catch (error) {
+    console.error('Error:', error.response.data.message)
+  }
+}
+```
+
+---
+
+## ⚙️ Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `PORT` | Server port | `5000` |
+| `DB_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/db` |
+| `JWT_SECRET` | Secret key for JWT signing | `your_secret_key_12345` |
+
+---
+
+## 🔄 Data Flow
+
+```
+Frontend Request
+    ↓
+Express Route (auth.routes.js)
+    ↓
+Controller (auth.controller.js)
+    ↓
+Service (auth.services.js) - Business Logic
+    ↓
+Queries (auth.queries.js) - Database
+    ↓
+PostgreSQL Database
+    ↓
+Response back to Frontend
+```
+
+---
+
+## 🛡️ Security Notes
+
+- Passwords are hashed with bcrypt (10 salt rounds)
+- JWT tokens expire in 24 hours
+- Use HTTPS in production
+- Never expose `JWT_SECRET` or `DB_URL` in code
+- Validate all user input on frontend AND backend
+- Use environment variables for sensitive data
+
+---
+
+## 📝 Testing with cURL
+
+### Register
+```bash
+curl -X POST http://localhost:5000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "password123"
+  }'
+```
+
+### Login
+```bash
+curl -X POST http://localhost:5000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john@example.com",
+    "password": "password123"
+  }'
+```
+
+### Protected Route (with token)
+```bash
+curl -X GET http://localhost:5000/api/profile \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+```
+
+---
+
+## 🐛 Common Issues
+
+### "Cannot find module"
+- Make sure `.js` extensions are included in imports
+- Check file paths are correct
+
+### "Database connection failed"
+- Verify `DB_URL` in `.env` is correct
+- Ensure PostgreSQL is running
+- Check credentials and database name
+
+### "jwt.verify is not a function"
+- Ensure `jsonwebtoken` is installed: `npm install jsonwebtoken`
+
+### "email already exist"
+- That email is already registered
+- Try logging in instead
+
+### CORS errors
+- Backend has CORS enabled
+- Ensure frontend URL matches CORS settings if needed
+
+---
+
+## 📚 Dependencies
+
+- **express** - Web framework
+- **cors** - Enable CORS
+- **dotenv** - Environment variables
+- **pg** - PostgreSQL driver
+- **bcrypt** - Password hashing
+- **jsonwebtoken** - JWT token creation/verification
+- **nodemon** - Auto-reload in development
+
+---
+
+## 🚀 Next Steps
+
+1. Add more protected routes (profile, update user, delete account)
+2. Add input validation
+3. Add error logging
+4. Add rate limiting
+5. Add email verification
+6. Add refresh tokens
+7. Add role-based access control
+
+---
+
+**Version**: 1.0.0  
+**Last Updated**: April 27, 2026
