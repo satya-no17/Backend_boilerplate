@@ -18,7 +18,7 @@ export const login = async (email, password )=>{
     if(!user){throw new Error('user not exist')}
 
     const isMatch = await bcrypt.compare(password,user.password)
-    if(!isMatch) throw new Error('invalid email,password')
+    if(!isMatch) throw new Error('invalid emailor password')
 
     const token = jwt.sign({
         id: user.id ,email:user.email },
