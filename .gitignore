@@ -1,4 +1,4 @@
 node_modules/
 .env
 .env
-routes/post.routes.js
+src/routes/post.routes.js
