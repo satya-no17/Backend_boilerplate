@@ -43,7 +43,9 @@ backend/
 **Purpose**: Express application configuration
 - Creates Express instance
 - Applies JSON body parser
-- Mounts auth routes under `/auth` prefix
+- Applies cookie parser middleware
+- Mounts auth routes under `/auth`
+- Mounts protected post routes under `/post`
 
 ### `src/db/db.js`
 **Purpose**: Database connection & initialization
@@ -79,8 +81,8 @@ backend/
 
 ### `src/middleWares/auth.middleware.js`
 **Purpose**: JWT authentication middleware
-- `protect()` - Verifies JWT tokens in Authorization header
-- Extracts bearer token from request
+- `protect()` - Verifies JWT tokens from the `token` cookie
+- Reads the token from `req.cookies.token`
 - Decodes and validates token
 - Attaches user data to `req.user`
 
@@ -204,14 +206,13 @@ Content-Type: application/json
 ```json
 {
   "message": "login success",
-  "user": {
-    "id": 1,
-    "name": "John Doe",
-    "email": "john@example.com"
-  },
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "id": 1,
+  "name": "John Doe",
+  "email": "john@example.com"
 }
 ```
+
+> A JWT is set in an HTTP-only cookie named `token` on successful login.
 
 **Error Response (400):**
 ```json
@@ -230,24 +231,28 @@ or
 
 ## 🔐 Protected Routes (Using Auth Middleware)
 
-To protect a route with JWT authentication:
+The app protects `/post` routes with JWT stored in an HTTP-only cookie.
 
-1. **Import middleware in your routes file:**
+### Example protected route
 ```javascript
+import express from 'express'
 import { protect } from '../middleWares/auth.middleware.js'
+import postRoutes from './post.routes.js'
+
+router.use('/post', protect, postRoutes)
 ```
 
-2. **Add middleware to route:**
-```javascript
-router.get('/profile', protect, getUserProfile)
+### Actual route in this project
+```
+POST /post/create
 ```
 
-3. **Access user data in controller:**
+### Controller access
 ```javascript
-export async function getUserProfile(req, res) {
-  const userId = req.user.id  // From token
+export function createPost(req, res) {
+  const userId = req.user.id
   const userEmail = req.user.email
-  // ... fetch user data
+  // ... handle protected request
 }
 ```
 
@@ -255,131 +260,49 @@ export async function getUserProfile(req, res) {
 
 ## 🔌 Frontend Integration
 
-### 1. Install Axios (or fetch)
+This project uses cookie-based JWT authentication. The login route sets an HTTP-only cookie named `token`.
+
+### 1. Use Axios with credentials
 ```bash
 npm install axios
 ```
 
-### 2. Create API Service File (`src/services/authService.js`)
+### 2. Create API client
 ```javascript
-import axios from 'axios'
-
-const API_URL = 'http://localhost:5000'
-
-export const authService = {
-  register: async (name, email, password) => {
-    const response = await axios.post(`${API_URL}/auth/register`, {
-      name,
-      email,
-      password
-    })
-    return response.data
-  },
-
-  login: async (email, password) => {
-    const response = await axios.post(`${API_URL}/auth/login`, {
-      email,
-      password
-    })
-    // Save token to localStorage
-    if (response.data.token) {
-      localStorage.setItem('authToken', response.data.token)
-    }
-    return response.data
-  },
-
-  logout: () => {
-    localStorage.removeItem('authToken')
-  }
-}
-```
-
-### 3. Use in Frontend Component (React Example)
-```javascript
-import { authService } from './services/authService'
-import { useState } from 'react'
-
-function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
-  const handleLogin = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const data = await authService.login(email, password)
-      console.log('Login success:', data)
-      // Redirect to dashboard or home
-    } catch (err) {
-      setError(err.response?.data?.message || 'Login failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleLogin}>
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-      />
-      <input
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password"
-      />
-      <button type="submit" disabled={loading}>
-        {loading ? 'Logging in...' : 'Login'}
-      </button>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-    </form>
-  )
-}
-
-export default LoginPage
-```
-
-### 4. Send Authenticated Requests
-```javascript
-// Create axios instance with token
 import axios from 'axios'
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:5000'
-})
-
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('authToken')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
+  baseURL: 'http://localhost:5000',
+  withCredentials: true
 })
 
 export default apiClient
 ```
 
-### 5. Use Protected Routes
+### 3. Login from frontend
 ```javascript
-import apiClient from './axios-config'
+import apiClient from './apiClient'
 
-// In your component
-const fetchUserProfile = async () => {
-  try {
-    const response = await apiClient.get('/api/profile')
-    console.log(response.data)
-  } catch (error) {
-    console.error('Error:', error.response.data.message)
-  }
+export const login = async (email, password) => {
+  const response = await apiClient.post('/auth/login', { email, password })
+  return response.data
 }
 ```
+
+### 4. Call protected route
+```javascript
+import apiClient from './apiClient'
+
+export const createPost = async (postData) => {
+  const response = await apiClient.post('/post/create', postData)
+  return response.data
+}
+```
+
+### 5. Notes
+- The JWT is stored in a cookie, so the frontend does not need to manually save it.
+- Ensure your frontend sends cookies by using `withCredentials: true`.
+- Protected routes like `/post/create` require the `token` cookie.
 
 ---
 
@@ -447,10 +370,12 @@ curl -X POST http://localhost:5000/auth/login \
   }'
 ```
 
-### Protected Route (with token)
+### Protected Route (with token cookie)
 ```bash
-curl -X GET http://localhost:5000/api/profile \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+curl -X POST http://localhost:5000/post/create \
+  -H "Content-Type: application/json" \
+  --cookie "token=YOUR_JWT_COOKIE_VALUE" \
+  -d '{"title":"Test post","body":"Hello"}'
 ```
 
 ---
